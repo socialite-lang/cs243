@@ -4,5 +4,8 @@ Analysis of DBLP co-authorship graph.
 
 Two example analysis algorithms -- shortest-paths and PageRank -- are 
 implemented in code/sp.py and code/pr.py
-You can run the example code with the following command:
+To run the algrithms, do the following steps:
+* run setup.sh to uncompress the DBLP data. (make sure you have bunzip2 and untar).
 * socialite/bin/socialite code/sp.py
+
+If something does not work, have a look at the log in logs/socialite.log
