@@ -1,0 +1,578 @@
+group dynamic-nested-table;
+import "TableCommon.stg"
+
+dynamicNestedTable(tableName, name, visitorClass, nestedTable, classes, methods, 
+		size, id, 
+		columns, nestedColumns, nestedNestedColumns, gbColumns, gbNestedColumns, gbAggrColumn,
+		idxCols,
+		concurrent=false, multiSet=false, isNested=false) ::= <<
+<if(!isNested)>
+package socialite.tables;
+
+<importForTable()>
+<endif>
+
+// dynamicNestedTable
+<if(!isNested)>public<endif> class <name> extends AbstractTableInst {
+	private static final long serialVersionUID = 1;
+	
+	public static int tableid() { return <id>; }
+	public static <name> create() { return new <name>(); }
+	
+	static boolean groupby = false;
+	static void setGroupby() {
+		if (groupby == false) {
+			groupby = true;
+			<nestedTable>.setGroupby();
+		}
+	}
+	static int makePos(int nodePos, int offset) { return (nodePos \<\< 8) | offset; }
+	static int getPos(int val) { return (val >\> 8); }
+	static int getOffset(int val) { return (val & 0xff); }
+	
+    static final class Node$Init extends Node {
+        static final int INIT_CHUNK_SIZE=4;
+        Node$Init() { super(INIT_CHUNK_SIZE); }
+        boolean isFull() {
+        	if (len \< CHUNK_SIZE) return false;
+        	return super.isFull();
+        }
+        int insert(<columns:{c|<c.type> a<i0>}; separator=", "><nestedColumns:{c|, <c.type> b<i0>}>) {
+        	if (len == col0().length) {
+        		expand();
+        	}
+        	return super.insert(<columns:{c|a<i0>}; separator=", "><nestedColumns:{c|, b<i0>}>);
+        }
+        void expand() {
+        	int size = len*2;
+        	<columns:{c|<c.type>[] _col<i0> = new <c.type>[size];<\n>}>
+        	<columns:{c|System.arraycopy(col<i0>, 0, _col<i0>, 0, len);<\n>}>
+        	<columns:{c|col<i0> = _col<i0>;<\n>}>            
+        	<nestedTable>[] _nested = new <nestedTable>[size];
+        	System.arraycopy(nested, 0, _nested, 0, len);
+        	nested = _nested;
+        }
+    }
+    static class Node {
+        static ConcurrentWeakQueue\<Node> pool = new ConcurrentWeakQueue\<Node>();
+        static Node alloc() {
+            Node n = pool.poll();
+            if (n == null) {
+	            n = new Node();
+	        } else {
+	            n.init();
+	        }
+	        return n;
+        }
+        static void free(Node n) { pool.add(n); }
+
+        static final int CHUNK_SIZE=128;
+
+	    <columns:{c|Object col<i0>;<\n>}>
+	    <nestedTable>[] nested;
+        <if(concurrent)>volatile<endif> int len;
+
+        Node() { this(CHUNK_SIZE); }
+        Node(int capacity) {
+            <columns:{c|col<i0> = new <c.type>[capacity];<\n>}>
+            nested = new <nestedTable>[capacity];
+        }
+        void init() {
+            len = 0;
+        }
+        public void free() { Node.free(this); }
+
+        boolean isFull() { return len() >= nested.length; }
+        int len() { return len; }
+
+        <columns:{c|<c.type>[] col<i0>() { return (<c.type>[])col<i0>; \}<\n>}>
+
+        boolean contains(<columns:{c|<c.type> a<i0>};separator=", "><nestedColumns:{c|, <c.type> b<i0>}>, boolean[] dontcare) {
+            for (int i=0; i\<len(); i++) {
+                if (true<columns:{c|&& (dontcare[<i0>]||col<i0>()[i]<EqOpMap.(c.type)>(a<i0>))}>) {
+                    return nested[i].contains(<nestedColumns:{c|b<i0>};separator=",">,
+                                        Arrays.copyOfRange(dontcare, <length(columns)>, dontcare.length));
+                }
+            }
+            return false;
+        }
+        boolean contains(<columns:{c|<c.type> a<i0>};separator=", "><nestedColumns:{c|, <c.type> b<i0>}>) {
+            for (int i=0; i\<len(); i++) {
+                if (true<columns:{c|&& col<i0>()[i]<EqOpMap.(c.type)>(a<i0>)}>) {
+                    return nested[i].contains(<nestedColumns:{c|b<i0>};separator=",">);
+                }
+            }
+            return false;
+        }
+        boolean contains_at(<columns:{c|<c.type> a<i0>};separator=", "><nestedColumns:{c|, <c.type> b<i0>}>, int at, boolean[] dontcare) {
+            int len = len();
+            assert len > at;
+            int i = at;
+            return true<columns:{c|&& (dontcare[<i0>]||a<i0><EqOpMap.(c.type)>(col<i0>()[i]))}> &&
+                        nested[i].contains(<nestedColumns:{c|b<i0>};separator=",">,
+                                    Arrays.copyOfRange(dontcare, <length(columns)>, dontcare.length));
+        }
+        boolean contains_at(<columns:{c|<c.type> a<i0>};separator=", "><nestedColumns:{c|, <c.type> b<i0>}>, int at) {
+            int len = len();
+            assert len > at;
+            int i = at;
+            return true<columns:{c|&& a<i0><EqOpMap.(c.type)>(col<i0>()[i])}> &&
+                        nested[i].contains(<nestedColumns:{c|b<i0>};separator=",">);
+        }
+        int insert(<columns:{c|<c.type> a<i0>};separator=", "><nestedColumns:{c|, <c.type> b<i0>}>) {
+            int l = len();
+            assert l \< nested.length;
+            <columns:{c|col<i0>()[l] = a<i0>;<\n>}>
+            if (nested[l] == null) { nested[l] = new <nestedTable>(); }
+            nested[l].insert(<nestedColumns:{c|b<i0>};separator=",">);
+            len = l+1;
+            return l;
+        }
+        boolean iterate(<visitorClass> v) {
+            int l = len();
+            for (int i=0; i\<l; i++) {
+                boolean cont=v.visit<columns:{c|_<c.absPos>}>
+                					(<columns:{c|col<i0>()[i]}; separator=",">);
+                if (cont) nested[i].iterate(v);
+            }
+            return true;
+        }
+        boolean iterate_at(<visitorClass> v, int pos) {
+            int l = len();
+            assert l > pos;
+            boolean cont=v.visit<columns:{c|_<c.absPos>}>
+                                (<columns:{c|col<i0>()[pos]}; separator=",">);
+            if (cont) nested[pos].iterate(v);
+            return true;
+        }
+        <if(first(nestedColumns).indexed)>
+            boolean iterate_at_by_<first(nestedColumns).absPos>(<first(nestedColumns).type> a, <visitorClass> v, int at) {
+                int l = len();
+                assert l > at;
+                boolean cont=v.visit<columns:{c|_<c.absPos>}>
+                                (<columns:{c|col<i0>()[at]}; separator=",">);
+                if (cont) { nested[at].iterate_by_<first(nestedColumns).absPos>(a, v); }
+                return true;
+            }
+            <if(first(nestedNestedColumns).indexed)>
+                boolean iterate_at_by_<first(nestedColumns).absPos>_<first(nestedNestedColumns).absPos>(
+                            <first(nestedColumns).type> a, <first(nestedNestedColumns).type> b, <visitorClass> v, int at) {
+                    int l = len();
+                    assert l > at;
+                    boolean cont=v.visit<columns:{c|_<c.absPos>}>
+                                    (<columns:{c|col<i0>()[at]}; separator=",">);
+                    if (cont) {
+                        nested[at].iterate_by_<first(nestedColumns).absPos>_<first(nestedNestedColumns).absPos>(a, b, v);
+                    }
+                    return true;
+                }
+            <endif>
+        <endif>
+	/**
+        <nestedColumns:{c|<if(c.indexed)>
+            <["from", "to"]:{order|
+              boolean iterate_<order>_<c.absPos>(<c.type> <order>, boolean inclusive, <visitorClass> v) {
+                int len = len();
+                for (int i=0; i\<len; i++) {
+                    boolean cont=v.visit<columns:{c2|_<c2.absPos>}>
+                                        (<columns:{c2|col<i0>()[i]}; separator=",">);
+                    if (cont) nested[i].iterate_part_<order>_<c.absPos>(<order>, inclusive, v);
+                \}
+                return true;
+              \}
+              boolean iterate_at_<order>_<c.absPos>(<c.type> <order>, boolean inclusive, <visitorClass> v, int at) {
+                int l = len();
+                assert l > at;
+                boolean cont=v.visit<columns:{c2|_<c2.absPos>}>
+                                (<columns:{c2|col<i0>()[at]}; separator=",">);
+                if (cont) nested[at].iterate_part_<order>_<c.absPos>(<order>, inclusive, v);
+                return true;
+              \}
+            }>
+            boolean iterate_from_to_<c.absPos>(<c.type> from, boolean fromInclusive, <c.type> to, boolean toInclusive, <visitorClass> v) {
+                int len = len();
+                for (int i=0; i\<len; i++) {
+                    boolean cont=v.visit<columns:{c2|_<c2.absPos>}>
+                                        (<columns:{c2|col<i0>()[i]}; separator=",">);
+                    if (cont) nested[i].iterate_part_from_to_<c.absPos>(from, fromInclusive, to, toInclusive, v);
+                \}
+                return true;
+            \}
+            boolean iterate_at_from_to_<c.absPos>(<c.type> from, boolean fromInclusive, <c.type> to, boolean toInclusive, <visitorClass> v, int at) {
+                int l = len();
+                assert l > at;
+                boolean cont=v.visit<columns:{c2|_<c2.absPos>}>
+                                (<columns:{c2|col<i0>()[at]}; separator=",">);
+                if (cont) nested[at].iterate_part_from_to_<c.absPos>(from, fromInclusive, to, toInclusive, v);
+                return true;
+            \}
+        <endif>
+        }>
+        */
+    }
+
+    SArrayList\<Node> nodeList;
+    <idxCols:{ic|SPosIndex index<ic.relPos>;<\n>}>
+    <if(gbColumns)>
+    SPosIndex groupbyMap;
+    <endif>
+
+    public <name>() {
+		nodeList = new SArrayList\<Node>();
+		nodeList.add(new Node$Init());
+        <idxCols:{ic|index<ic.relPos> = new SPosIndex();<\n>}>
+        <if (gbColumns && !rest(gbColumns) && first(gbColumns).indexed)>
+        	groupbyMap = index<first(gbColumns).relPos>;
+        <endif>
+    }
+
+    public int id() { return <id>; }
+    public int size() { assert false; return -1; }
+    public String name() { return "<tableName>"; }
+
+    public boolean isEmpty() { return nodeList.getQuick(0).len() == 0; }
+    public String toString() {
+        String str="Table <tableName>(id=<id>):";
+        return str + nodeList.getQuick(0).toString();
+    }
+    public void clearQuick() { clear(); }
+    public void clear() {
+        for (int i=0; i\<nodeList.size(); i++) {
+        	Node n = nodeList.getQuick(i);
+        	nodeList.setQuick(i, null);
+            n.free();
+        }
+        nodeList.resetQuick();
+    	nodeList.add(new Node$Init());
+        <idxCols:{ic|index<ic.relPos>.clear();<\n>}>
+        <if(gbColumns)>if (groupbyMap!=null) groupbyMap.clear();<endif>
+    }
+
+    public boolean contains(<columns:{c|final <c.type> a<i0>};separator=", "><nestedColumns:{c|, final <c.type> b<i0>}>) {
+        <if(idxCols)>
+        	final boolean[] contains = new boolean[] {false};
+			index<first(idxCols).relPos>.iterateBy(a<first(idxCols).relPos>, new IntVisitor() {
+				public boolean visit(int val) {
+					int pos = getPos(val);
+					int offset = getOffset(val);
+        			Node n = nodeList.getQuick(pos);
+        			if (n.contains_at(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|, b<i0>}>, pos)) {
+                        contains[0] = true;
+                        return false;
+                    }
+                    return true;
+				}
+			});
+			return contains[0];
+		<else>
+        for (int i=0; i\<nodeList.size(); i++) {
+        	Node n = nodeList.getQuick(i);
+            if (n.contains(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|, b<i0>}>))
+                return true;
+        }
+        return false;
+        <endif>
+    }
+    public boolean contains(<columns:{c|final <c.type> a<i0>};separator=", "><nestedColumns:{c|, final <c.type> b<i0>}>, final boolean[] dontcare) {
+        <if(idxCols)>
+        if (!dontcare[<first(idxCols).relPos>]) {
+        	final boolean[] contains = new boolean[] {false};
+			index<first(idxCols).relPos>.iterateBy(a<first(idxCols).relPos>, new IntVisitor() {
+				public boolean visit(int val) {
+					int pos = getPos(val);
+					int offset = getOffset(val);
+        			Node n = nodeList.getQuick(pos);
+        			if (n.contains_at(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|, b<i0>}>, pos, dontcare)) {
+                        contains[0] = true;
+                        return false;
+                    }
+                    return true;
+				}
+			});
+			return contains[0];
+        }
+        <endif>
+        for (int i=0; i\<nodeList.size(); i++) {
+        	Node n = nodeList.getQuick(i);
+            if (n.contains(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|, b<i0>}>, dontcare))
+                return true;
+        }
+        return false;
+    }
+    void addToIndex(<idxCols:{ic|<ic.type> a<ic.relPos> ,}>int pos) {
+        <idxCols:{ic|index<ic.relPos>.add(a<ic.relPos>, pos);<\n>}>
+    }
+	void addToGroupbyMap(<gbColumns:{g|<g.type> a<g.relPos>,}>int pos) {
+	    <if(gbColumns)>
+	    	if (groupby) { ensureGroupbyMap(); }
+	    	if (groupbyMap == null) { return; }
+     	<if(rest(gbColumns))>
+     	    Tuple<gbColumns:{g|_<TupleMap.(g.type)>}> groupbyTup = new Tuple<gbColumns:{g|_<TupleMap.(g.type)>}>();
+     		<gbColumns:{g|groupbyTup._<i0> = a<i0>;}; separator="\n">
+     		groupbyMap.add(groupbyTup, pos);
+     	<elseif(first(gbColumns).indexed)>
+     		assert groupbyMap == index<first(gbColumns).relPos>;
+     	<else>
+     		groupbyMap.add(a0, pos);
+     	<endif>
+     	<endif>
+	}
+
+    boolean insert_with_prefix(<columns:{c|final <c.type> a<i0>};separator=", "><nestedColumns:{c|, final <c.type> b<i0>}>) {
+        <if(idxCols)>
+        final boolean[] ret = new boolean[] {false};
+        index<first(idxCols).relPos>.iterateBy(a<first(idxCols).relPos>, new IntVisitor() {
+			public boolean visit(int val) {
+        		int pos = getPos(val);
+        		int offset = getOffset(val);
+        		Node n = nodeList.getQuick(pos);
+        		if (true<columns:{c|&&(n.col<i0>()[offset]<EqOpMap.(c.type)>(a<i0>))}>) {
+                	n.nested[offset].insert(<nestedColumns:{c|b<i0>};separator=",">);
+					ret[0] = true;
+					return false;
+				}
+				return true;
+        	}
+        });
+        return ret[0];
+        <else>
+        for (int j=0; j\<nodeList.size(); j++) {
+        	Node n = nodeList.getQuick(j);
+            for (int i=0; i\<n.len(); i++) {
+                if (true<columns:{c|&&(n.col<i0>()[i]<EqOpMap.(c.type)>(a<i0>))}>) {
+                    n.nested[i].insert(<nestedColumns:{c|b<i0>};separator=",">);
+                    return true;
+                }
+            }
+        }
+        return false;
+        <endif>
+    }
+    public boolean insert(<columns:{c|final <c.type> a<i0>};separator=", "><nestedColumns:{c|, final <c.type> b<i0>}>) {
+    <if(!isNested && !multiSet)>
+        if (contains(<columns:{c|a<i0>};separator=","><nestedColumns:{c|,b<i0>}>)) return false;
+    <endif>
+        if (!isEmpty()) {
+            boolean inserted = insert_with_prefix(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|,b<i0>}>);
+            if (inserted) return true;
+        }
+        Node last = nodeList.getQuick(nodeList.size()-1);
+        int nodePos = nodeList.size()-1;
+        if (last.isFull()) {
+        	last = Node.alloc();
+	        nodeList.add(last);
+	        nodePos = nodeList.size()-1;
+        }
+        int offset = last.insert(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|, b<i0>}>);
+        int pos = makePos(nodePos, offset);
+        addToIndex(<idxCols:{ic|a<ic.relPos> ,}>pos);
+        addToGroupbyMap(<gbColumns:{g|a<g.relPos>, }>pos);
+        return true;
+    }
+    public boolean insertAtomic(<columns:{c|<c.type> a<i0>};separator=", "><nestedColumns:{c|, final <c.type> b<i0>}>) {
+        synchronized(this) {
+            return insert(<columns:{c|a<i0>};separator=", "><nestedColumns:{c|, b<i0>}>);
+        }
+    }
+
+<if(gbColumns)> // if (gbColumns) [
+    <groupbyDynNested()>
+<endif> // ] if (gbColumns)
+
+    public void iterate(<visitorClass> v) {
+    	for (int i=0; i\<nodeList.size(); i++) {
+    		Node n = nodeList.getQuick(i);
+            boolean cont = n.iterate(v);
+            if (!cont) return;
+        }
+    }
+
+    // iterate_by_[column-index] methods
+<idxCols:{c|
+	public void iterate_by_<c.absPos>(<c.type> a, final <visitorClass> v) {
+		index<c.relPos>.iterateBy(a, new IntVisitor() {
+			public boolean visit(int val) {
+				int pos = getPos(val);
+				int offset = getOffset(val);
+				Node n = nodeList.getQuick(pos);
+				return n.iterate_at(v, offset);
+			\}
+		\});
+	\}
+    <if(first(nestedColumns).indexed)>
+    public void iterate_by_<c.absPos>_<first(nestedColumns).absPos>(<c.type> a, final <first(nestedColumns).type> b,
+                                                                    final <visitorClass> v) {
+        index<c.relPos>.iterateBy(a, new IntVisitor() {
+			public boolean visit(int val) {
+				int pos = getPos(val);
+				int offset = getOffset(val);
+				Node n = nodeList.getQuick(pos);
+				return n.iterate_at_by_<first(nestedColumns).absPos>(b, v, offset);
+			\}
+		\});
+	\}
+        <if(first(nestedNestedColumns).indexed)>
+        public void iterate_by_<c.absPos>_<first(nestedColumns).absPos>_<first(nestedNestedColumns).absPos>(
+                                               <c.type> a, final <first(nestedColumns).type> b, final <first(nestedNestedColumns).type> c,
+                                               final <visitorClass> v) {
+           	index<c.relPos>.iterateBy(a, new IntVisitor() {
+				public boolean visit(int val) {
+					int pos = getPos(val);
+					int offset = getOffset(val);
+					Node n = nodeList.getQuick(pos);
+					return n.iterate_at_by_<first(nestedColumns).absPos>_<first(nestedNestedColumns).absPos>(b, c, v, offset);
+				\}
+			\});
+        \}
+        <endif>
+    <endif>
+}>
+/**
+    // iterate_part_[column-index] methods
+<idxCols:{c|
+    public void iterate_part_from_<c.absPos>(final <c.type> from, final boolean inclusive, final <visitorClass> v) {
+        <indexIterate("iterateFrom", ["from", "inclusive"], "iterate_at", [])>
+    \}
+    public void iterate_part_to_<c.absPos>(final <c.type> to, final boolean inclusive, final <visitorClass> v) {
+        <indexIterate("iterateTo", ["to", "inclusive"], "iterate_at", [])>
+    \}
+    public void iterate_part_from_to_<c.absPos>(final <c.type> from, final boolean fromInclusive,
+                                                final <c.type> to, final boolean toInclusive, final <visitorClass> v) {
+        <indexIterate("iterateFromTo", ["from", "fromInclusive", "to", "toInclusive"], "iterate_at", [])>
+    \}
+
+    <nestedColumns:{nc|<if(nc.indexed)>
+        public void iterate_part_from_<nc.absPos>_by_<c.absPos>(final <c.type> a, final <nc.type> from, final boolean inclusive, final <visitorClass> v) {
+            <indexIterate("iterateBy", ["a"], {iterate_at_from_<nc.absPos>}, ["from", "inclusive"])>
+        \}
+        public void iterate_part_to_<nc.absPos>_by_<c.absPos>(final <c.type> a, final <nc.type> to, final boolean inclusive, final <visitorClass> v) {
+            <indexIterate("iterateBy", ["a"], {iterate_at_to_<nc.absPos>}, ["to", "inclusive"])>
+        \}
+        public void iterate_part_from_to_<nc.absPos>_by_<c.absPos>(final <c.type> a,
+                                                                   final <nc.type> from, final boolean fromInclusive, final <nc.type> to, final boolean toInclusive,
+                                                                   final <visitorClass> v) {
+            <indexIterate("iterateBy", ["a"], {iterate_at_from_to_<nc.absPos>}, ["from", "fromInclusive", "to", "toInclusive"])>
+        \}
+        <endif>
+    }>
+}>
+<nestedColumns:{nc|<if(nc.indexed)>
+    public void iterate_part_from_<nc.absPos>(final <nc.type> from, final boolean inclusive, final <visitorClass> v) {
+        for (Node n=head; n!=null; n=n.next) {
+            n.iterate_from_<nc.absPos>(from, inclusive, v);
+        \}
+    \}
+    public void iterate_part_to_<nc.absPos>(final <nc.type> to, final boolean inclusive, final <visitorClass> v) {
+        for (Node n=head; n!=null; n=n.next) {
+            n.iterate_to_<nc.absPos>(to, inclusive, v);
+        \}
+    \}
+    public void iterate_part_from_to_<nc.absPos>(final <nc.type> from, final boolean fromInclusive, <nc.type> to, boolean toInclusive,final <visitorClass> v) {
+        for (Node n=head; n!=null; n=n.next) {
+            n.iterate_from_to_<nc.absPos>(from, fromInclusive, to, toInclusive, v);
+        \}
+    \}
+    <endif>
+}>
+*/
+
+	<methods;separator="\n">
+}
+<classes; separator="\n">
+>>
+
+indexIterate(idxIterateFunc, idxFuncArgs, nodeIterateFunc, nodeFuncArgsPrefix) ::= <<
+  index<c.relPos>.<idxIterateFunc>(<idxFuncArgs:{a|<a>,}>
+    new IntVisitor() {
+        public boolean visit(int val) {
+        	int pos = getPos(val);
+        	int offset = getOffset(val);
+        	Node n = nodeList.getQuick(pos);
+            return n.<nodeIterateFunc>(<nodeFuncArgsPrefix:{a|<a>,}>v, offset);
+        }
+    });
+>>
+
+groupbyGet() ::= <<
+<if(rest(gbColumns))>
+	Tuple<gbColumns:{g|_<TupleMap.(g.type)>}> groupbyTup = new Tuple<gbColumns:{g|_<TupleMap.(g.type)>}>();
+    <gbColumns:{g|groupbyTup._<i0> = a<i0>;}; separator="\n">
+	int pos = groupbyMap.get(groupbyTup);
+<else>
+	int pos = groupbyMap.get(a0);
+<endif>
+>>
+getNodeAndOffset() ::= <<
+	int nodePos = getPos(pos);
+    Node n = nodeList.getQuick(nodePos);
+	int offset = getOffset(pos);
+>>
+
+groupbyDynNested() ::= <<
+	void ensureGroupbyMap() {
+		if (groupbyMap == null) { groupbyMap = new SPosIndex(); }
+	}
+<if(gbNestedColumns)> // if(gbNestedColumns) [
+	public <gbAggrColumn.type> groupby(<gbColumns:{c|<c.type> a<i0>};separator=", ">
+									   <gbNestedColumns:{c|, <c.type> b<i0>}>) {
+		setGroupby();
+    	ensureGroupbyMap();
+        <groupbyGet()>
+        <getNodeAndOffset()>
+		int len = n.len();
+		assert len > pos;
+		return n.nested[pos].groupby(<gbNestedColumns:{c|b<i0>};separator=",">);
+	}
+	public boolean contains(<gbColumns:{c|<c.type> a<i0>};separator=", ">
+                            <gbNestedColumns:{c|, <c.type> b<i0>}>) {
+		setGroupby();
+		ensureGroupbyMap();
+        <groupbyGet()>
+        if (pos \< 0) { 
+        	return false; 
+        }
+        <getNodeAndOffset()>
+        int len = n.len();
+        assert len > pos;
+        return n.nested[pos].contains(<gbNestedColumns:{c|b<i0>};separator=",">);
+    }
+    public boolean update(<columns:{c|<c.type> a<i0>};separator=",">
+                          <nestedColumns:{c|,<c.type> b<i0>}>) {
+		setGroupby();
+		ensureGroupbyMap();
+        <groupbyGet()>
+        if (pos \< 0) { return insert(<columns:{c|a<i0>};separator=","><nestedColumns:{c|,b<i0>}>); }
+        <getNodeAndOffset()>
+        int len = n.len();
+        assert len > pos;
+        return n.nested[pos].update(<nestedColumns:{c|b<i0>};separator=",">);
+    }
+<else> // if (!gbNestedColumns) [
+    public <gbAggrColumn.type> groupby(<gbColumns:{c|<c.type> a<i0>};separator=",">) {
+    	setGroupby();
+		ensureGroupbyMap();
+        <groupbyGet()>
+        <getNodeAndOffset()>
+        int len = n.len();
+        assert len > pos;
+        return n.col<gbAggrColumn.relPos>()[pos];
+    }
+    public boolean contains(<gbColumns:{c|<c.type> a<i0>};separator=", ">) {
+        setGroupby();
+        ensureGroupbyMap()
+        <gropubyGet()>
+        return pos >= 0;
+    }
+    public boolean update(<columns:{c|<c.type> a<i0>};separator=",">
+                          <nestedColumns:{c|,<c.type> b<i0>}>) {
+        setGroupby();
+        ensureGroupbyMap();
+        <groupbyGet()>
+        if (pos \< 0) { return insert(<columns:{c|a<i0>};separator=","><nestedColumns:{c|,b<i0>}>); }
+        <getNodeAndOffset()>
+        int len = n.len();
+        assert len > pos;
+        return n.nested[pos].update(<nestedColumns:{c|b<i0>};separator=",">);
+    }
+<endif> // ] if (gbNestedColumns)
+>>
