@@ -1,0 +1,32 @@
+* Max-flow algorithm
+ -- Edmonds-Karp algorithm http://en.wikipedia.org/wiki/Edmonds%E2%80%93Karp_algorithm
+* Max-flow algorithm
+ -- Push-Relabel algorithm http://en.wikipedia.org/wiki/Push%E2%80%93relabel_maximum_flow_algorithm
+
+* Finding weakly connected components
+ -- for any pair of nodes there is an undirected path between nodes
+* Finding biconnected components
+ -- any pair of nodes is connected by 2 disjoint paths (removal of any single edge does not
+    disconnect the component
+* Finding articulation points
+ -- Articulation points are vertices that if removed disconnect the graph
+* Finding bridge edges
+ -- Bridge edges are edges that if removed disconnect the graph
+
+* Clique Percolation Method for detecting overlapping communities
+ -- see https://github.com/snap-stanford/snap/tree/master/examples/cliques
+
+* Degree centrality 
+ -- see http://en.wikipedia.org/wiki/Centrality#Degree_centrality
+* Closeness centrality
+ -- http://en.wikipedia.org/wiki/Centrality#Closeness_centrality
+
+* Graph indexing
+ -- see paper "Graph indexing: a frequent structure-based approach" (http://dl.acm.org/citation.cfm?id=1007607)
+
+* K-core network decomposition 
+ -- see https://github.com/snap-stanford/snap/tree/master/examples/kcores and http://en.wikipedia.org/wiki/Degeneracy_%28graph_theory%29
+
+* NCP plot: creates the Network Community Profile Plot (ncpplot)
+ -- see https://github.com/snap-stanford/snap/tree/master/examples/ncpplot
+

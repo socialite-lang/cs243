@@ -148,12 +148,36 @@ public class Analysis {
             }
         }
     }
+	void checkSortBy() {
+        for (Table t:newTables) {
+            if (!t.hasSortby()) continue;
+            for (ColumnGroup g:t.getColumnGroups()) {
+            	if (!g.isSorted()) continue;
+            	if (g.hasIndex()) {
+            		String msg = "Cannot use both indexby and sortby to a (nested) table.";
+                    p.removeTableDecl(t.decl());
+                    throw new AnalysisException(msg, t);
+            	}
+            }
+        }
+        for (Rule r:rules) {
+        	if (!r.getHead().hasFunctionParam()) continue;
+        	
+        	Predicate h = r.getHead();
+        	Table t = tableMap.get(r.getHead().name());
+        	if (t.hasSortby()) {
+        		String msg = "Cannot apply an aggregate function to a table with sorted column";
+        		throw new AnalysisException(msg, r);
+        	}
+        }
+    }
 	void checkTableDecls() {
 		checkTableOpts();
 	}
 	
 	void checkTableOpts() {
         checkGroupbyAndIndexBy();
+        checkSortBy();
     }
 
 	void checkFreeVarsInHead() {
